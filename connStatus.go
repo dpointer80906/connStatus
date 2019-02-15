@@ -15,6 +15,8 @@ type connectionParameters struct {
 	mtu           int
 	peer          string
 	iface         string
+	count         int
+	dlySec        int
 }
 
 func main() {
@@ -47,6 +49,8 @@ func initParameters() (parameters connectionParameters) {
 		mtu:           1500,
 		peer:          "75.75.75.75",
 		iface:         "en0",
+		count:         2,
+		dlySec:        1,
 	}
 	return
 }
@@ -55,12 +59,12 @@ func ConnStatus(parameters *connectionParameters) {
 
 	connection, err := icmp.ListenPacket(parameters.listenNetwork, parameters.listenAddress)
 	if err != nil {
-		fmt.Println(err)
+		panic(err)
 	}
 	defer func() {
 		err = connection.Close()
 		if err != nil {
-			fmt.Println(err)
+			fmt.Printf("%v\n", err)
 		}
 	}()
 
@@ -73,50 +77,56 @@ func ConnStatus(parameters *connectionParameters) {
 	}
 	msgTx, err := msg.Marshal(nil)
 	if err != nil {
-		fmt.Println(err)
-	}
-	if _, err := connection.WriteTo(msgTx, &net.UDPAddr{IP: net.ParseIP(parameters.peer), Zone: parameters.iface}); err != nil {
-		fmt.Println(err)
+		panic(err)
 	}
 
-	rb := make([]byte, parameters.mtu)
-	n, peer, err := connection.ReadFrom(rb)
-	if err != nil {
-		fmt.Println(err)
-	}
-	rm, err := icmp.ParseMessage(1, rb[:n])
-	if err != nil {
-		fmt.Println(err)
-	}
+	msgRx := make([]byte, parameters.mtu)
+	udpAddr := net.UDPAddr{IP: net.ParseIP(parameters.peer), Zone: parameters.iface}
 
-	switch rm.Type {
-	case ipv4.ICMPTypeEchoReply:
-		fmt.Printf("got %v from %v", rm.Type, peer)
-	case ipv4.ICMPTypeDestinationUnreachable:
-		fmt.Printf("got %v from %v", rm.Type, peer)
-	case ipv4.ICMPTypeRedirect:
-		fmt.Printf("got %v from %v", rm.Type, peer)
-	case ipv4.ICMPTypeEcho:
-		fmt.Printf("got %v from %v", rm.Type, peer)
-	case ipv4.ICMPTypeRouterAdvertisement:
-		fmt.Printf("got %v from %v", rm.Type, peer)
-	case ipv4.ICMPTypeRouterSolicitation:
-		fmt.Printf("got %v from %v", rm.Type, peer)
-	case ipv4.ICMPTypeTimeExceeded:
-		fmt.Printf("got %v from %v", rm.Type, peer)
-	case ipv4.ICMPTypeParameterProblem:
-		fmt.Printf("got %v from %v", rm.Type, peer)
-	case ipv4.ICMPTypeTimestamp:
-		fmt.Printf("got %v from %v", rm.Type, peer)
-	case ipv4.ICMPTypeTimestampReply:
-		fmt.Printf("got %v from %v", rm.Type, peer)
-	case ipv4.ICMPTypePhoturis:
-		fmt.Printf("got %v from %v", rm.Type, peer)
-	case ipv4.ICMPTypeExtendedEchoRequest:
-		fmt.Printf("got %v from %v", rm.Type, peer)
-	case ipv4.ICMPTypeExtendedEchoReply:
-		fmt.Printf("got %v from %v", rm.Type, peer)
-	default:
-		fmt.Printf("got %+v; unknown", rm.Type)
+	for i := 0; i < parameters.count; i++ {
+
+		if _, err := connection.WriteTo(msgTx, &udpAddr); err != nil {
+			fmt.Println(err)
+		}
+
+		n, peer, err := connection.ReadFrom(msgRx)
+		if err != nil {
+			fmt.Println(err)
+		}
+		rm, err := icmp.ParseMessage(1, msgRx[:n])
+		if err != nil {
+			fmt.Println(err)
+		}
+
+		switch rm.Type {
+		case ipv4.ICMPTypeEchoReply:
+			fmt.Printf("got %v from %v\n", rm.Type, peer)
+		case ipv4.ICMPTypeDestinationUnreachable:
+			fmt.Printf("got %v from %v\n", rm.Type, peer)
+		case ipv4.ICMPTypeRedirect:
+			fmt.Printf("got %v from %v\n", rm.Type, peer)
+		case ipv4.ICMPTypeEcho:
+			fmt.Printf("got %v from %v\n", rm.Type, peer)
+		case ipv4.ICMPTypeRouterAdvertisement:
+			fmt.Printf("got %v from %v\n", rm.Type, peer)
+		case ipv4.ICMPTypeRouterSolicitation:
+			fmt.Printf("got %v from %v\n", rm.Type, peer)
+		case ipv4.ICMPTypeTimeExceeded:
+			fmt.Printf("got %v from %v\n", rm.Type, peer)
+		case ipv4.ICMPTypeParameterProblem:
+			fmt.Printf("got %v from %v\n", rm.Type, peer)
+		case ipv4.ICMPTypeTimestamp:
+			fmt.Printf("got %v from %v\n", rm.Type, peer)
+		case ipv4.ICMPTypeTimestampReply:
+			fmt.Printf("got %v from %v\n", rm.Type, peer)
+		case ipv4.ICMPTypePhoturis:
+			fmt.Printf("got %v from %v\n", rm.Type, peer)
+		case ipv4.ICMPTypeExtendedEchoRequest:
+			fmt.Printf("got %v from %v\n", rm.Type, peer)
+		case ipv4.ICMPTypeExtendedEchoReply:
+			fmt.Printf("got %v from %v\n", rm.Type, peer)
+		default:
+			fmt.Printf("got %+v; unknown\n", rm.Type)
+		}
 	}
 }
