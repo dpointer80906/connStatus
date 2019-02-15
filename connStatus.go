@@ -9,45 +9,78 @@ import (
 	"runtime"
 )
 
-func main() {
-	ConnStatus()
+type connectionParameters struct {
+	listenNetwork string
+	listenAddress string
+	mtu           int
+	peer          string
+	iface         string
 }
 
-func ConnStatus() {
-
-	switch runtime.GOOS {
-	case "darwin":
-		fmt.Println("unprivileged ICMP enabled")
-	case "linux":
-		fmt.Println("you may need to adjust the net.ipv4.ping_group_range kernel state")
-	default:
-		fmt.Println("not supported on", runtime.GOOS)
-		return
+func main() {
+	if unprivilegedICMP() {
+		parameters := initParameters()
+		ConnStatus(&parameters)
 	}
+}
 
-	c, err := icmp.ListenPacket("udp4", "0.0.0.0")
+// Check if this OS supports unprivileged ICMP.
+func unprivilegedICMP() (retcode bool) {
+	retcode = true
+	switch runtime.GOOS {
+	case "darwin": // yes
+		fmt.Println("unprivileged ICMP enabled")
+	case "linux": // maybe?
+		fmt.Println("you may need to adjust the net.ipv4.ping_group_range kernel state")
+	default: // nope
+		fmt.Println("not supported on", runtime.GOOS)
+		retcode = false
+	}
+	return
+}
+
+// TODO: init from command line parsing
+func initParameters() (parameters connectionParameters) {
+	parameters = connectionParameters{
+		listenNetwork: "udp4",
+		listenAddress: "0.0.0.0",
+		mtu:           1500,
+		peer:          "75.75.75.75",
+		iface:         "en0",
+	}
+	return
+}
+
+func ConnStatus(parameters *connectionParameters) {
+
+	connection, err := icmp.ListenPacket(parameters.listenNetwork, parameters.listenAddress)
 	if err != nil {
 		fmt.Println(err)
 	}
-	defer c.Close()
+	defer func() {
+		err = connection.Close()
+		if err != nil {
+			fmt.Println(err)
+		}
+	}()
 
-	wm := icmp.Message{
+	msg := icmp.Message{
 		Type: ipv4.ICMPTypeEcho, Code: 0,
 		Body: &icmp.Echo{
 			ID: os.Getpid() & 0xffff, Seq: 1,
-			Data: []byte("HELLO-R-U-THERE"),
+			Data: []byte("hello-sailor"),
 		},
 	}
-	wb, err := wm.Marshal(nil)
+	msgTx, err := msg.Marshal(nil)
 	if err != nil {
 		fmt.Println(err)
 	}
-	if _, err := c.WriteTo(wb, &net.UDPAddr{IP: net.ParseIP("75.75.75.75"), Zone: "en0"}); err != nil {
+	if _, err := connection.WriteTo(msgTx, &net.UDPAddr{IP: net.ParseIP(parameters.peer), Zone: parameters.iface}); err != nil {
 		fmt.Println(err)
 	}
 
-	rb := make([]byte, 1500)
-	n, peer, err := c.ReadFrom(rb)
+	rb := make([]byte, parameters.mtu)
+	n, peer, err := connection.ReadFrom(rb)
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -55,6 +88,7 @@ func ConnStatus() {
 	if err != nil {
 		fmt.Println(err)
 	}
+
 	switch rm.Type {
 	case ipv4.ICMPTypeEchoReply:
 		fmt.Printf("got %v from %v", rm.Type, peer)
