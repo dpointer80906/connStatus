@@ -99,34 +99,23 @@ func ConnStatus(parameters *connectionParameters) {
 		}
 
 		switch rm.Type {
-		case ipv4.ICMPTypeEchoReply:
-			fmt.Printf("got %v from %v\n", rm.Type, peer)
-		case ipv4.ICMPTypeDestinationUnreachable:
-			fmt.Printf("got %v from %v\n", rm.Type, peer)
-		case ipv4.ICMPTypeRedirect:
-			fmt.Printf("got %v from %v\n", rm.Type, peer)
-		case ipv4.ICMPTypeEcho:
-			fmt.Printf("got %v from %v\n", rm.Type, peer)
-		case ipv4.ICMPTypeRouterAdvertisement:
-			fmt.Printf("got %v from %v\n", rm.Type, peer)
-		case ipv4.ICMPTypeRouterSolicitation:
-			fmt.Printf("got %v from %v\n", rm.Type, peer)
-		case ipv4.ICMPTypeTimeExceeded:
-			fmt.Printf("got %v from %v\n", rm.Type, peer)
-		case ipv4.ICMPTypeParameterProblem:
-			fmt.Printf("got %v from %v\n", rm.Type, peer)
-		case ipv4.ICMPTypeTimestamp:
-			fmt.Printf("got %v from %v\n", rm.Type, peer)
-		case ipv4.ICMPTypeTimestampReply:
-			fmt.Printf("got %v from %v\n", rm.Type, peer)
-		case ipv4.ICMPTypePhoturis:
-			fmt.Printf("got %v from %v\n", rm.Type, peer)
-		case ipv4.ICMPTypeExtendedEchoRequest:
-			fmt.Printf("got %v from %v\n", rm.Type, peer)
-		case ipv4.ICMPTypeExtendedEchoReply:
+		case
+			ipv4.ICMPTypeEchoReply,
+			ipv4.ICMPTypeDestinationUnreachable,
+			ipv4.ICMPTypeRedirect,
+			ipv4.ICMPTypeEcho,
+			ipv4.ICMPTypeRouterAdvertisement,
+			ipv4.ICMPTypeRouterSolicitation,
+			ipv4.ICMPTypeTimeExceeded,
+			ipv4.ICMPTypeParameterProblem,
+			ipv4.ICMPTypeTimestamp,
+			ipv4.ICMPTypeTimestampReply,
+			ipv4.ICMPTypePhoturis,
+			ipv4.ICMPTypeExtendedEchoRequest,
+			ipv4.ICMPTypeExtendedEchoReply:
 			fmt.Printf("got %v from %v\n", rm.Type, peer)
 		default:
-			fmt.Printf("got %+v; unknown\n", rm.Type)
+			fmt.Printf("got %v; unknown\n", rm.Type)
 		}
 	}
 }
