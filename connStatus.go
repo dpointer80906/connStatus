@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
@@ -16,10 +17,11 @@ type connectionParameters struct {
 	peer          string
 	iface         string
 	count         int
-	dlySec        int
+	delaySec      int
 }
 
 func main() {
+
 	if unprivilegedICMP() {
 		parameters := initParameters()
 		ConnStatus(&parameters)
@@ -41,17 +43,20 @@ func unprivilegedICMP() (retcode bool) {
 	return
 }
 
-// TODO: init from command line parsing
 func initParameters() (parameters connectionParameters) {
 	parameters = connectionParameters{
 		listenNetwork: "udp4",
 		listenAddress: "0.0.0.0",
 		mtu:           1500,
-		peer:          "75.75.75.75",
+		peer:          "",
 		iface:         "en0",
-		count:         2,
-		dlySec:        1,
+		count:         0,
+		delaySec:      0,
 	}
+	flag.StringVar(&parameters.peer, "peer", "75.75.75.75", "ping target ipv4 address")
+	flag.IntVar(&parameters.count, "count", 1, "ping repeat count")
+	flag.IntVar(&parameters.delaySec, "delaySec", 1, "delay in seconds between pings")
+	flag.Parse()
 	return
 }
 
