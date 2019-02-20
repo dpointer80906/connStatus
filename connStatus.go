@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"time"
 )
 
 type connectionParameters struct {
@@ -43,21 +44,41 @@ func unprivilegedICMP() (retcode bool) {
 	return
 }
 
+// Initialize parameters with command line args.
 func initParameters() (parameters connectionParameters) {
 	parameters = connectionParameters{
-		listenNetwork: "udp4",
-		listenAddress: "0.0.0.0",
-		mtu:           1500,
-		peer:          "",
-		iface:         "en0",
-		count:         0,
-		delaySec:      0,
+		listenNetwork: "udp4",    // protocol
+		listenAddress: "0.0.0.0", // ICMP listener bound address
+		mtu:           1500,      // default
+		peer:          "",        // ping target ipv4 dotted decimal address
+		iface:         "en0",     // ping-er interface name
+		count:         0,         // how many times to ping peer
+		delaySec:      0,         // with this delay (seconds) between them
 	}
 	flag.StringVar(&parameters.peer, "peer", "75.75.75.75", "ping target ipv4 address")
 	flag.IntVar(&parameters.count, "count", 1, "ping repeat count")
 	flag.IntVar(&parameters.delaySec, "delaySec", 1, "delay in seconds between pings")
+	// TODO: error checking on cl args
 	flag.Parse()
 	return
+}
+
+// Create outgoing ping message bytes.
+func createTxMsg(sequenceNumber int) []byte {
+	msg := icmp.Message{
+		Type: ipv4.ICMPTypeEcho,
+		Code: 0,
+		Body: &icmp.Echo{
+			ID:   os.Getpid() & 0xffff,
+			Seq:  sequenceNumber,
+			Data: []byte("hello-sailor"),
+		},
+	}
+	msgTx, err := msg.Marshal(nil)
+	if err != nil {
+		panic(err)
+	}
+	return msgTx
 }
 
 func ConnStatus(parameters *connectionParameters) {
@@ -73,39 +94,37 @@ func ConnStatus(parameters *connectionParameters) {
 		}
 	}()
 
-	msg := icmp.Message{
-		Type: ipv4.ICMPTypeEcho, Code: 0,
-		Body: &icmp.Echo{
-			ID: os.Getpid() & 0xffff, Seq: 1,
-			Data: []byte("hello-sailor"),
-		},
-	}
-	msgTx, err := msg.Marshal(nil)
-	if err != nil {
-		panic(err)
-	}
-
 	msgRx := make([]byte, parameters.mtu)
 	udpAddr := net.UDPAddr{IP: net.ParseIP(parameters.peer), Zone: parameters.iface}
 
 	for i := 0; i < parameters.count; i++ {
 
+		msgTx := createTxMsg(i)
 		if _, err := connection.WriteTo(msgTx, &udpAddr); err != nil {
-			fmt.Println(err)
+			fmt.Printf("%v\n", err)
+		}
+
+		err = connection.SetReadDeadline(time.Now().Add(time.Second))
+		if err != nil {
+			fmt.Printf("%v\n", err)
+
 		}
 
 		n, peer, err := connection.ReadFrom(msgRx)
 		if err != nil {
-			fmt.Println(err)
+			fmt.Printf("%v\n", err)
 		}
 		rm, err := icmp.ParseMessage(1, msgRx[:n])
 		if err != nil {
-			fmt.Println(err)
+			fmt.Printf("%v\n", err)
 		}
 
 		switch rm.Type {
+		case ipv4.ICMPTypeEchoReply:
+			body, _ := rm.Body.(*icmp.Echo)
+			fmt.Printf("got %v %v from %v\n", rm.Type, body.Seq, peer)
+
 		case
-			ipv4.ICMPTypeEchoReply,
 			ipv4.ICMPTypeDestinationUnreachable,
 			ipv4.ICMPTypeRedirect,
 			ipv4.ICMPTypeEcho,
