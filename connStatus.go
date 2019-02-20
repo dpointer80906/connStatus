@@ -90,7 +90,7 @@ func ConnStatus(parameters *connectionParameters) {
 	defer func() {
 		err = connection.Close()
 		if err != nil {
-			fmt.Printf("%v\n", err)
+			fmt.Printf("connection.Close(): %v\n", err)
 		}
 	}()
 
@@ -101,45 +101,53 @@ func ConnStatus(parameters *connectionParameters) {
 
 		msgTx := createTxMsg(i)
 		if _, err := connection.WriteTo(msgTx, &udpAddr); err != nil {
-			fmt.Printf("%v\n", err)
+			fmt.Printf("connection.WriteTo(): %v\n", err)
+			continue
 		}
 
-		err = connection.SetReadDeadline(time.Now().Add(time.Second))
-		if err != nil {
-			fmt.Printf("%v\n", err)
-
+		if err = connection.SetReadDeadline(time.Now().Add(time.Microsecond)); err != nil {
+			fmt.Printf("connection.SetReadDeadline(): %v\n", err)
+			continue
 		}
 
 		n, peer, err := connection.ReadFrom(msgRx)
 		if err != nil {
-			fmt.Printf("%v\n", err)
-		}
-		rm, err := icmp.ParseMessage(1, msgRx[:n])
-		if err != nil {
-			fmt.Printf("%v\n", err)
-		}
+			fmt.Printf("connection.ReadFrom(): %v\n", err)
+			continue
 
-		switch rm.Type {
-		case ipv4.ICMPTypeEchoReply:
-			body, _ := rm.Body.(*icmp.Echo)
-			fmt.Printf("got %v %v from %v\n", rm.Type, body.Seq, peer)
+		} else {
 
-		case
-			ipv4.ICMPTypeDestinationUnreachable,
-			ipv4.ICMPTypeRedirect,
-			ipv4.ICMPTypeEcho,
-			ipv4.ICMPTypeRouterAdvertisement,
-			ipv4.ICMPTypeRouterSolicitation,
-			ipv4.ICMPTypeTimeExceeded,
-			ipv4.ICMPTypeParameterProblem,
-			ipv4.ICMPTypeTimestamp,
-			ipv4.ICMPTypeTimestampReply,
-			ipv4.ICMPTypePhoturis,
-			ipv4.ICMPTypeExtendedEchoRequest,
-			ipv4.ICMPTypeExtendedEchoReply:
-			fmt.Printf("got %v from %v\n", rm.Type, peer)
-		default:
-			fmt.Printf("got %v; unknown\n", rm.Type)
+			rm, err := icmp.ParseMessage(1, msgRx[:n])
+			if err != nil {
+				fmt.Printf("connection.ParseMessage(): %v\n", err)
+				continue
+			}
+
+			switch rm.Type {
+			case ipv4.ICMPTypeEchoReply:
+				body, ok := rm.Body.(*icmp.Echo)
+				if ok {
+					fmt.Printf("received %v %v from %v\n", rm.Type, body.Seq, peer)
+				} else {
+					fmt.Printf("Unable to cast interface icmp.MessageBody to struct icmp.Body\n")
+				}
+			case
+				ipv4.ICMPTypeDestinationUnreachable,
+				ipv4.ICMPTypeRedirect,
+				ipv4.ICMPTypeEcho,
+				ipv4.ICMPTypeRouterAdvertisement,
+				ipv4.ICMPTypeRouterSolicitation,
+				ipv4.ICMPTypeTimeExceeded,
+				ipv4.ICMPTypeParameterProblem,
+				ipv4.ICMPTypeTimestamp,
+				ipv4.ICMPTypeTimestampReply,
+				ipv4.ICMPTypePhoturis,
+				ipv4.ICMPTypeExtendedEchoRequest,
+				ipv4.ICMPTypeExtendedEchoReply:
+				fmt.Printf("received %v from %v\n", rm.Type, peer)
+			default:
+				fmt.Printf("received %v; unknown\n", rm.Type)
+			}
 		}
 	}
 }
