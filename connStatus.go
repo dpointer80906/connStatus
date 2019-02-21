@@ -19,6 +19,7 @@ type connectionParameters struct {
 	iface         string
 	count         int
 	delaySec      int
+	durationSec   time.Duration
 }
 
 func main() {
@@ -60,6 +61,7 @@ func initParameters() (parameters connectionParameters) {
 	flag.IntVar(&parameters.delaySec, "delaySec", 1, "delay in seconds between pings")
 	// TODO: error checking on cl args
 	flag.Parse()
+	parameters.durationSec = time.Duration(parameters.delaySec) * time.Second
 	return
 }
 
@@ -83,6 +85,7 @@ func createTxMsg(sequenceNumber int) []byte {
 
 func ConnStatus(parameters *connectionParameters) {
 
+	// create ICMP listener
 	connection, err := icmp.ListenPacket(parameters.listenNetwork, parameters.listenAddress)
 	if err != nil {
 		panic(err)
@@ -94,28 +97,37 @@ func ConnStatus(parameters *connectionParameters) {
 		}
 	}()
 
-	msgRx := make([]byte, parameters.mtu)
-	udpAddr := net.UDPAddr{IP: net.ParseIP(parameters.peer), Zone: parameters.iface}
+	msgRx := make([]byte, parameters.mtu)                                            // receiver data buffer
+	udpAddr := net.UDPAddr{IP: net.ParseIP(parameters.peer), Zone: parameters.iface} // ping target address ino
 
+	//
 	for i := 0; i < parameters.count; i++ {
 
+		// delay between pings
+		if i > 0 {
+			time.Sleep(parameters.durationSec)
+		}
+
+		// create and output next sequenced ICMP echo message to transmit
 		msgTx := createTxMsg(i)
 		if _, err := connection.WriteTo(msgTx, &udpAddr); err != nil {
 			fmt.Printf("connection.WriteTo(): %v\n", err)
 			continue
 		}
 
-		if err = connection.SetReadDeadline(time.Now().Add(time.Microsecond)); err != nil {
+		// set read operation timeout
+		if err = connection.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
 			fmt.Printf("connection.SetReadDeadline(): %v\n", err)
 			continue
 		}
 
+		// receive ping peer response if no timeout
 		n, peer, err := connection.ReadFrom(msgRx)
 		if err != nil {
 			fmt.Printf("connection.ReadFrom(): %v\n", err)
 			continue
 
-		} else {
+		} else { // got response, parse the bytes
 
 			rm, err := icmp.ParseMessage(1, msgRx[:n])
 			if err != nil {
@@ -123,11 +135,13 @@ func ConnStatus(parameters *connectionParameters) {
 				continue
 			}
 
+			// got valid response, interpret the received message type field
 			switch rm.Type {
 			case ipv4.ICMPTypeEchoReply:
 				body, ok := rm.Body.(*icmp.Echo)
 				if ok {
-					fmt.Printf("received %v %v from %v\n", rm.Type, body.Seq, peer)
+					now := time.Now().Format(time.RFC3339)
+					fmt.Printf("%v received %v %v from %v\n", now, rm.Type, body.Seq, peer)
 				} else {
 					fmt.Printf("Unable to cast interface icmp.MessageBody to struct icmp.Body\n")
 				}
@@ -144,9 +158,9 @@ func ConnStatus(parameters *connectionParameters) {
 				ipv4.ICMPTypePhoturis,
 				ipv4.ICMPTypeExtendedEchoRequest,
 				ipv4.ICMPTypeExtendedEchoReply:
-				fmt.Printf("received %v from %v\n", rm.Type, peer)
+				fmt.Printf("received unexpected response %v from %v\n", rm.Type, peer)
 			default:
-				fmt.Printf("received %v; unknown\n", rm.Type)
+				fmt.Printf("received unknown response %v\n", rm.Type)
 			}
 		}
 	}
