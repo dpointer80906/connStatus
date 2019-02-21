@@ -12,14 +12,14 @@ import (
 )
 
 type connectionParameters struct {
-	listenNetwork string
-	listenAddress string
-	mtu           int
-	peer          string
-	iface         string
-	count         int
-	delaySec      int
-	durationSec   time.Duration
+	listenNetwork string        // protocol
+	listenAddress string        // ICMP listener bound address
+	mtu           int           // default:1500
+	peer          string        // ping target ipv4 dotted decimal address
+	iface         string        // local interface name
+	count         int           // how many times to ping peer
+	delaySec      time.Duration // with this delay (seconds) between them
+	udpAddr       net.UDPAddr   // full ping target address struct
 }
 
 func main() {
@@ -28,65 +28,6 @@ func main() {
 		parameters := initParameters()
 		ConnStatus(&parameters)
 	}
-}
-
-// Check if this OS supports unprivileged ICMP.
-func unprivilegedICMP() (retcode bool) {
-	retcode = true
-	switch runtime.GOOS {
-	case "darwin": // yes
-		fmt.Println("unprivileged ICMP enabled")
-	case "linux": // maybe?
-		fmt.Println("you may need to adjust the net.ipv4.ping_group_range kernel state")
-	default: // nope
-		fmt.Println("not supported on", runtime.GOOS)
-		retcode = false
-	}
-	return
-}
-
-// Initialize parameters with command line args.
-func initParameters() (parameters connectionParameters) {
-	parameters = connectionParameters{
-		listenNetwork: "udp4",    // protocol
-		listenAddress: "0.0.0.0", // ICMP listener bound address
-		mtu:           1500,      // default
-		peer:          "",        // ping target ipv4 dotted decimal address
-		iface:         "en0",     // ping-er interface name
-		count:         0,         // how many times to ping peer
-		delaySec:      0,         // with this delay (seconds) between them
-	}
-	flag.StringVar(&parameters.peer, "peer", "75.75.75.75", "ping target ipv4 address")
-	flag.IntVar(&parameters.count, "count", 1, "ping repeat count")
-	flag.IntVar(&parameters.delaySec, "delaySec", 1, "delay in seconds between pings")
-	// TODO: error checking on cl args
-	flag.Parse()
-	parameters.durationSec = time.Duration(parameters.delaySec) * time.Second
-	return
-}
-
-// Create outgoing ping message bytes.
-func createTxMsg(sequenceNumber int) []byte {
-	msg := icmp.Message{
-		Type: ipv4.ICMPTypeEcho,
-		Code: 0,
-		Body: &icmp.Echo{
-			ID:   os.Getpid() & 0xffff,
-			Seq:  sequenceNumber,
-			Data: []byte("hello-sailor"),
-		},
-	}
-	msgTx, err := msg.Marshal(nil)
-	if err != nil {
-		panic(err)
-	}
-	return msgTx
-}
-
-// print timestamped connection error
-func printErr(src string, err error) {
-	now := time.Now().Format(time.RFC3339)
-	fmt.Printf("%v connection.%s(): %v\n", now, src, err)
 }
 
 func ConnStatus(parameters *connectionParameters) {
@@ -103,20 +44,22 @@ func ConnStatus(parameters *connectionParameters) {
 		}
 	}()
 
-	msgRx := make([]byte, parameters.mtu)                                            // receiver data buffer
-	udpAddr := net.UDPAddr{IP: net.ParseIP(parameters.peer), Zone: parameters.iface} // ping target address ino
+	msgRx := make([]byte, parameters.mtu) // receiver data buffer
+	first := true                         // delay only first time through, allow for overflow in loop counter
 
-	//
+	// TODO: handle forever pinging
+	// ping/wait for response loop
 	for i := 0; i < parameters.count; i++ {
 
-		// delay between pings
-		if i > 0 {
-			time.Sleep(parameters.durationSec)
+		if first {
+			first = false
+		} else {
+			time.Sleep(parameters.delaySec)
 		}
 
 		// create and output next sequenced ICMP echo message to transmit
 		msgTx := createTxMsg(i)
-		if _, err := connection.WriteTo(msgTx, &udpAddr); err != nil {
+		if _, err := connection.WriteTo(msgTx, &parameters.udpAddr); err != nil {
 			printErr("WriteTo", err)
 			continue
 		}
@@ -141,6 +84,7 @@ func ConnStatus(parameters *connectionParameters) {
 				continue
 			}
 
+			// TODO: check seq?
 			// got valid response, interpret the received message type field
 			switch rm.Type {
 			case ipv4.ICMPTypeEchoReply:
@@ -170,4 +114,84 @@ func ConnStatus(parameters *connectionParameters) {
 			}
 		}
 	}
+}
+
+// Check if this OS supports unprivileged ICMP.
+func unprivilegedICMP() (retcode bool) {
+	retcode = true
+	switch runtime.GOOS {
+	case "darwin": // yes
+		fmt.Println("unprivileged ICMP enabled")
+	case "linux": // maybe?
+		fmt.Println("you may need to adjust the net.ipv4.ping_group_range kernel state")
+	default: // nope
+		fmt.Println("not supported on", runtime.GOOS)
+		retcode = false
+	}
+	return
+}
+
+// Initialize parameters with validated command line args.
+func initParameters() (parameters connectionParameters) {
+
+	parameters = connectionParameters{
+		listenNetwork: "udp4",
+		listenAddress: "0.0.0.0",
+		mtu:           1500,
+		iface:         "en0",
+	}
+	flag.StringVar(&parameters.peer, "peer", "75.75.75.75", "ping target ipv4 address")
+	flag.IntVar(&parameters.count, "count", 1, "ping repeat count (non-negative)")
+	flag.DurationVar(&parameters.delaySec, "delaySec", 1, "delay (seconds) between pings")
+	flag.Parse()
+
+	parameters.udpAddr = checkPeer(parameters.peer, parameters.iface)
+	checkCount(parameters.count)
+	parameters.delaySec = parameters.delaySec * time.Second
+
+	fmt.Printf("processed and validated parameters: %+v\n", parameters)
+	return
+}
+
+// error check: ipv4 peer address; create net.UDPAddr struct
+func checkPeer(peer string, iface string) (udpAddr net.UDPAddr) {
+
+	if ipaddr := net.ParseIP(peer); ipaddr == nil {
+		panic(fmt.Sprintf("invalid ipv4 address: %v\n", peer))
+	} else {
+		udpAddr = net.UDPAddr{IP: ipaddr, Zone: iface}
+	}
+	return
+}
+
+// error check: count must be non-negative
+func checkCount(count int) {
+
+	if count < 0 {
+		panic(fmt.Sprintf("invalid negative count: %v\n", count))
+	}
+}
+
+// Create outgoing ping message bytes.
+func createTxMsg(sequenceNumber int) []byte {
+	msg := icmp.Message{
+		Type: ipv4.ICMPTypeEcho,
+		Code: 0,
+		Body: &icmp.Echo{
+			ID:   os.Getpid() & 0xffff,
+			Seq:  sequenceNumber,
+			Data: []byte("hello-sailor"),
+		},
+	}
+	msgTx, err := msg.Marshal(nil)
+	if err != nil {
+		panic(err)
+	}
+	return msgTx
+}
+
+// print timestamped connection error
+func printErr(src string, err error) {
+	now := time.Now().Format(time.RFC3339)
+	fmt.Printf("%v connection.%s(): %v\n", now, src, err)
 }
