@@ -83,6 +83,12 @@ func createTxMsg(sequenceNumber int) []byte {
 	return msgTx
 }
 
+// print timestamped connection error
+func printErr(src string, err error) {
+	now := time.Now().Format(time.RFC3339)
+	fmt.Printf("%v connection.%s(): %v\n", now, src, err)
+}
+
 func ConnStatus(parameters *connectionParameters) {
 
 	// create ICMP listener
@@ -93,7 +99,7 @@ func ConnStatus(parameters *connectionParameters) {
 	defer func() {
 		err = connection.Close()
 		if err != nil {
-			fmt.Printf("connection.Close(): %v\n", err)
+			printErr("Close", err)
 		}
 	}()
 
@@ -111,27 +117,27 @@ func ConnStatus(parameters *connectionParameters) {
 		// create and output next sequenced ICMP echo message to transmit
 		msgTx := createTxMsg(i)
 		if _, err := connection.WriteTo(msgTx, &udpAddr); err != nil {
-			fmt.Printf("connection.WriteTo(): %v\n", err)
+			printErr("WriteTo", err)
 			continue
 		}
 
 		// set read operation timeout
 		if err = connection.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
-			fmt.Printf("connection.SetReadDeadline(): %v\n", err)
+			printErr("SetReadDeadline", err)
 			continue
 		}
 
 		// receive ping peer response if no timeout
 		n, peer, err := connection.ReadFrom(msgRx)
 		if err != nil {
-			fmt.Printf("connection.ReadFrom(): %v\n", err)
+			printErr("ReadFrom", err)
 			continue
 
 		} else { // got response, parse the bytes
 
 			rm, err := icmp.ParseMessage(1, msgRx[:n])
 			if err != nil {
-				fmt.Printf("connection.ParseMessage(): %v\n", err)
+				printErr("ParseMessage", err)
 				continue
 			}
 
