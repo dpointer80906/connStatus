@@ -25,6 +25,10 @@ type connectionParameters struct {
 }
 
 func main() {
+	run()
+}
+
+func run() {
 
 	if unprivilegedICMP() {
 		parameters := initParameters()
@@ -48,7 +52,7 @@ func unprivilegedICMP() (retcode bool) {
 	return
 }
 
-// Initialize parameters with validated command line args.
+// Initialize parameters with validated command line arguments and defaults.
 func initParameters() (parameters connectionParameters) {
 
 	parameters = connectionParameters{
@@ -58,7 +62,7 @@ func initParameters() (parameters connectionParameters) {
 		iface:         "en0",
 	}
 	flag.StringVar(&parameters.peer, "peer", "75.75.75.75", "ping target ipv4 address")
-	flag.IntVar(&parameters.count, "count", 1, "non-negative ping repeat count (0 equals forever)")
+	flag.IntVar(&parameters.count, "count", 0, "non-negative ping repeat count (0 equals forever)")
 	flag.DurationVar(&parameters.delay, "delay", time.Second, "delay (units) between pings")
 	flag.BoolVar(&parameters.verbose, "v", false, "enable verbose output")
 	flag.Parse()
@@ -70,7 +74,7 @@ func initParameters() (parameters connectionParameters) {
 	return
 }
 
-// error check: ipv4 peer address; create net.UDPAddr struct
+// Error check: ipv4 peer address; create net.UDPAddr struct.
 func checkPeer(peer string, iface string) (udpAddr net.UDPAddr) {
 
 	if ipaddr := net.ParseIP(peer); ipaddr == nil {
@@ -81,7 +85,7 @@ func checkPeer(peer string, iface string) (udpAddr net.UDPAddr) {
 	return
 }
 
-// error check: count must be non-negative
+// Error check: count must be non-negative.
 func checkCount(count int) {
 
 	if count < 0 {
@@ -89,6 +93,7 @@ func checkCount(count int) {
 	}
 }
 
+// Create the ICMP listener, then loop sending ping echo messages and receiving echo replies.
 func connStatus(parameters *connectionParameters) {
 
 	// create ICMP listener
@@ -104,21 +109,18 @@ func connStatus(parameters *connectionParameters) {
 	}()
 
 	msgRx := make([]byte, parameters.mtu) // receiver data buffer
+	sequence := 0                         // icmp ping echo sequence number
 	first := true                         // delay only first time through, allow for overflow in loop counter
-
-	// inc and limits are used to handle forever pinging (count == 0)
-	inc := 1
-	limit := parameters.count
-	if parameters.count == 0 {
+	inc := 1                              // inc is set to zero for forever pinging (count = 0)
+	limit := parameters.count             // limit is set to maxint for forever pinging (count = 0)
+	if parameters.count == 0 {            // ping forever?
 		inc = 0
 		limit = math.MaxInt32
 	}
-	sequence := 0 // icmp ping echo sequence number
 
 	// ping request/wait for response loop
 	for i := 0; i < limit; i += inc {
 
-		// only delay on first pass through loop
 		if first {
 			first = false
 		} else {
@@ -200,7 +202,7 @@ func createTxMsg(sequenceNumber int) []byte {
 	return msgTx
 }
 
-// print timestamped connection error
+// Print and timestamp any connection error.
 func printErr(src string, err error) {
 	now := time.Now().Format(time.RFC3339)
 	fmt.Printf("%v connection.%s(): %v\n", now, src, err)
