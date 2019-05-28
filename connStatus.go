@@ -163,8 +163,14 @@ func connStatus(parameters *connectionParameters) {
 				if ok && parameters.verbose {
 					fmt.Printf("%v received %v %v from %v\n", now, rm.Type, body.Seq, peer)
 				}
+			case ipv4.ICMPTypeDestinationUnreachable:
+				body, ok := rm.Body.(*icmp.DstUnreach)
+				if ok && parameters.verbose {
+					fmt.Printf("%v received %v from %v\n", now, rm.Type, peer)
+					hdr, err := icmp.ParseIPv4Header(body.Data)
+					fmt.Printf("headers: %v err %v\n", hdr, err)
+				}
 			case
-				ipv4.ICMPTypeDestinationUnreachable,
 				ipv4.ICMPTypeRedirect,
 				ipv4.ICMPTypeEcho,
 				ipv4.ICMPTypeRouterAdvertisement,
